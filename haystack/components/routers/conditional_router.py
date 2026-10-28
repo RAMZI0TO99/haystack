@@ -4,6 +4,7 @@
 
 import ast
 import contextlib
+import typing
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, NotRequired, TypedDict, get_args, get_origin
 
@@ -587,7 +588,19 @@ class ConditionalRouter:
         if origin is None:
             return isinstance(value, expected_type)
 
-        # Handle Sequence types (List, Tuple, etc)
+        if origin is tuple:
+            if not isinstance(value, tuple):
+                return False
+            # Both bare typing.Tuple and an explicit empty tuple have no type arguments.
+            if expected_type is typing.Tuple:  # noqa: UP006
+                return True
+            if len(args) == 2 and args[1] is Ellipsis:
+                return all(self._output_matches_type(item, args[0]) for item in value)
+            return len(value) == len(args) and all(
+                self._output_matches_type(item, item_type) for item, item_type in zip(value, args, strict=True)
+            )
+
+        # Handle Sequence types (List, etc)
         if isinstance(origin, type) and issubclass(origin, Sequence):
             if isinstance(value, (str, bytes)):
                 return False

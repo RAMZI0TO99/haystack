@@ -1,0 +1,6 @@
+---
+fixes:
+  - |
+    Fix ``ConditionalRouter`` output validation for tuple annotations. Fixed-length
+    tuples now check each position and the tuple length, while variadic and empty
+    tuple annotations are handled correctly.

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import copy
+import typing
 from collections.abc import Callable
 from unittest import mock
 
@@ -15,6 +16,9 @@ from haystack.components.routers.conditional_router import NoRouteSelectedExcept
 from haystack.core.errors import DeserializationError
 from haystack.core.serialization_security import _deserialization_context
 from haystack.dataclasses import ChatMessage
+
+# Exercise both modern and legacy tuple annotations.
+_TUPLE_TYPES = (tuple, typing.Tuple)  # noqa: UP006
 
 
 def custom_filter_to_sede(value):
@@ -560,6 +564,73 @@ class TestRouter:
 
         with pytest.raises(ValueError, match="Route 'result' type doesn't match expected type"):
             router.run(value=42)
+
+    @pytest.mark.parametrize("tuple_type", _TUPLE_TYPES)
+    @pytest.mark.parametrize(
+        "type_args, value",
+        [
+            ((int, str), (1, "one")),
+            ((int,), (1,)),
+            ((int, Ellipsis), (1, 2, 3)),
+            ((int, Ellipsis), ()),
+            ((), ()),
+            ((list[int], str | None), ([1, 2], None)),
+        ],
+    )
+    def test_validate_tuple_output(self, tuple_type, type_args, value):
+        router = ConditionalRouter(
+            routes=[
+                {
+                    "condition": "{{ True }}",
+                    "output": "{{ value }}",
+                    "output_type": tuple_type[type_args],
+                    "output_name": "result",
+                }
+            ],
+            validate_output_type=True,
+        )
+
+        assert router.run(value=value) == {"result": value}
+
+    @pytest.mark.parametrize("tuple_type", _TUPLE_TYPES)
+    @pytest.mark.parametrize(
+        "type_args, value",
+        [
+            ((int, str), (1, 2)),
+            ((int, str), (1,)),
+            ((int, str), ()),
+            ((int,), (1, 2)),
+            ((int,), [1]),
+            ((int, Ellipsis), (1, "two")),
+            ((), (1,)),
+        ],
+    )
+    def test_validate_tuple_output_rejects_mismatched_types_and_lengths(self, tuple_type, type_args, value):
+        router = ConditionalRouter(
+            routes=[
+                {
+                    "condition": "{{ True }}",
+                    "output": "{{ value }}",
+                    "output_type": tuple_type[type_args],
+                    "output_name": "result",
+                }
+            ],
+            validate_output_type=True,
+        )
+
+        with pytest.raises(ValueError, match="Route 'result' type doesn't match expected type"):
+            router.run(value=value)
+
+    @pytest.mark.parametrize("tuple_type", _TUPLE_TYPES)
+    def test_validate_unparameterized_tuple_output(self, tuple_type):
+        router = ConditionalRouter(
+            routes=[
+                {"condition": "{{ True }}", "output": "{{ value }}", "output_type": tuple_type, "output_name": "result"}
+            ],
+            validate_output_type=True,
+        )
+
+        assert router.run(value=(1, "one")) == {"result": (1, "one")}
 
     def test_str_not_matching_list_str(self):
         """
