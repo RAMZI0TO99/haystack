@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
+
 from haystack import Document
 from haystack.components.preprocessors.csv_document_cleaner import CSVDocumentCleaner
 
@@ -119,6 +121,16 @@ A,B,C
     result = csv_document_cleaner.run([csv_document])
     cleaned_document = result["documents"][0]
     assert cleaned_document.content == ",,\nA,B,C\n4,5,6\n"
+
+
+@pytest.mark.parametrize("ignore_rows, ignore_columns", [(3, 0), (0, 3), (3, 1), (1, 3), (3, 3)])
+def test_ignore_all_rows_or_columns_preserves_document(ignore_rows: int, ignore_columns: int) -> None:
+    csv_document = Document(id="source-document", content="A,B,C\n,,\n1,2,3\n", meta={"name": "test.csv"})
+    cleaner = CSVDocumentCleaner(ignore_rows=ignore_rows, ignore_columns=ignore_columns)
+
+    result = cleaner.run([csv_document])
+
+    assert result["documents"] == [csv_document]
 
 
 def test_ignore_rows_and_columns() -> None:

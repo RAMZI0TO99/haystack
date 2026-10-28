@@ -1,0 +1,5 @@
+---
+fixes:
+  - |
+    Preserve CSV documents when ``ignore_rows`` or ``ignore_columns`` covers all
+    rows or columns in ``CSVDocumentCleaner``, avoiding accidental data loss.

@@ -90,10 +90,10 @@ class CSVDocumentCleaner:
                 cleaned_documents.append(document)
                 continue
 
-            if ignore_rows > df.shape[0] or ignore_columns > df.shape[1]:
+            if ignore_rows >= df.shape[0] or ignore_columns >= df.shape[1]:
                 logger.warning(
-                    "Document {id} has fewer rows {df_rows} or columns {df_cols} "
-                    "than the number of rows {rows} or columns {cols} to ignore. "
+                    "Document {id} has {df_rows} rows and {df_cols} columns, but is configured to ignore "
+                    "{rows} rows and {cols} columns, leaving no data to clean. "
                     "Keeping the entire document.",
                     id=document.id,
                     df_rows=df.shape[0],
