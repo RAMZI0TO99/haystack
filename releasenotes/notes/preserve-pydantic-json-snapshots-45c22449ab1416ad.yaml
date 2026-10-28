@@ -1,0 +1,7 @@
+---
+fixes:
+  - |
+    Pydantic models with ``Json[T]`` fields can now be restored from newly
+    serialized ``State`` data and pipeline snapshots. Previously, serialization
+    stored those fields as parsed values, causing deserialization to fail and
+    preventing pipelines from resuming from a saved snapshot.

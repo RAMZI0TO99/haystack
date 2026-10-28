@@ -46,7 +46,7 @@ def _serialize_value_with_schema(payload: Any) -> dict[str, Any]:  # noqa: PLR09
     # Handle pydantic
     if isinstance(payload, pydantic.BaseModel):
         type_name = generate_qualified_class_name(type(payload))
-        return {"serialization_schema": {"type": type_name}, "serialized_data": payload.model_dump()}
+        return {"serialization_schema": {"type": type_name}, "serialized_data": payload.model_dump(round_trip=True)}
 
     # Handle dictionary case - iterate through fields
     if isinstance(payload, dict):

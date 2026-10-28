@@ -25,6 +25,12 @@ class CustomModel(pydantic.BaseModel):
     name: str
 
 
+class _StrictJsonModel(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(strict=True)
+    payload: pydantic.Json[list[int]]
+    created_at: datetime
+
+
 class CustomEnum(Enum):
     ONE = "one"
     TWO = "two"
@@ -286,6 +292,16 @@ def test_serialize_and_deserialize_sequence_types(value, result):
 def test_serialize_and_deserialize_complex_types(value, result):
     assert _serialize_value_with_schema(value) == result
     assert _deserialize_value_with_schema(result) == value
+
+
+def test_pydantic_json_field_roundtrip_preserves_native_types():
+    created_at = datetime(2026, 1, 1)
+    model = _StrictJsonModel.model_validate({"payload": "[1, 2]", "created_at": created_at})
+
+    serialized = _serialize_value_with_schema(model)
+
+    assert serialized["serialized_data"]["created_at"] == created_at
+    assert _deserialize_value_with_schema(serialized) == model
 
 
 def test_serialize_and_deserialize_value_with_schema_with_various_types():

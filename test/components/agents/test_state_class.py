@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, Generic, List, Optional, TypeVar, Union
 
 import pytest
+from pydantic import BaseModel, Json
 
 from haystack.components.agents.state.state import (
     State,
@@ -20,6 +21,19 @@ from haystack.components.agents.state.state import (
     merge_lists,
 )
 from haystack.dataclasses import ChatMessage
+
+
+class _JsonStateModel(BaseModel):
+    payload: Json[list[int]]
+
+
+def test_state_roundtrip_with_pydantic_json_field():
+    model = _JsonStateModel.model_validate({"payload": "[1, 2]"})
+    state = State(schema={"request": {"type": _JsonStateModel}}, data={"request": model})
+
+    restored = State.from_dict(state.to_dict())
+
+    assert restored.data["request"] == model
 
 
 @pytest.fixture

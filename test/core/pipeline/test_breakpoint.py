@@ -8,6 +8,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, Json
 
 from haystack import component
 from haystack.components.joiners import BranchJoiner, ListJoiner
@@ -30,6 +31,10 @@ from haystack.utils import _deserialize_value_with_schema
 from haystack.utils.base_serialization import _serialize_value_with_schema
 
 _EMPTY_OBJECT_PAYLOAD = {"serialization_schema": {"type": "object", "properties": {}}, "serialized_data": {}}
+
+
+class _JsonSnapshotModel(BaseModel):
+    payload: Json[list[int]]
 
 
 def test_transform_json_structure_unwraps_sender_value():
@@ -191,6 +196,23 @@ def _looping_pipeline() -> Pipeline:
 
 
 class TestResumeFromPipelineSnapshot:
+    def test_resume_saved_snapshot_with_pydantic_json_field(self, tmp_path, monkeypatch):
+        monkeypatch.setenv(HAYSTACK_PIPELINE_SNAPSHOT_SAVE_ENABLED, "true")
+        model = _JsonSnapshotModel.model_validate({"payload": "[1, 2]"})
+        pipeline = Pipeline()
+        pipeline.add_component("joiner", BranchJoiner(type_=_JsonSnapshotModel))
+
+        with pytest.raises(BreakpointException) as exc_info:
+            pipeline.run(
+                data={"joiner": {"value": model}},
+                break_point=Breakpoint(component_name="joiner", snapshot_file_path=str(tmp_path)),
+            )
+
+        snapshot_path = exc_info.value.pipeline_snapshot_file_path
+        assert snapshot_path is not None
+        snapshot = load_pipeline_snapshot(snapshot_path)
+        assert pipeline.run(data={}, pipeline_snapshot=snapshot) == {"joiner": {"value": model}}
+
     def test_failed_resume_does_not_modify_snapshot_or_prevent_retry(self, monkeypatch):
         pipeline = _three_component_pipeline(max_runs_per_component=1)
 
