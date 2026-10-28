@@ -415,6 +415,10 @@ class LLMRanker:
             document_index = entry.get("index")
             if document_index is None:
                 continue
+            if isinstance(document_index, bool) or (
+                isinstance(document_index, float) and not document_index.is_integer()
+            ):
+                continue
 
             try:
                 # LLMs can return numeric indices as strings even when asked for integers.

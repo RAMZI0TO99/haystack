@@ -287,14 +287,55 @@ def test_run_preserves_duplicate_indices():
     assert [document.id for document in result["documents"]] == ["2", "2", "1"]
 
 
-def test_run_numeric_string_index_is_accepted():
+@pytest.mark.parametrize("index", ['"2"', "2.0"])
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_run_numeric_string_and_integral_float_indices_are_accepted(index: str, use_async: bool) -> None:
     documents = [Document(id="1", content="first"), Document(id="2", content="second")]
-    chat_generator = MockChatGenerator('{"documents": [{"index": "2"}]}')
+    chat_generator = MockChatGenerator('{"documents": [{"index": ' + index + "}]}")
     ranker = LLMRanker(chat_generator=chat_generator)
 
-    result = ranker.run(query="test query", documents=documents)
+    if use_async:
+        result = await ranker.run_async(query="test query", documents=documents)
+    else:
+        result = ranker.run(query="test query", documents=documents)
 
     assert result == {"documents": [documents[1]]}
+
+
+@pytest.mark.parametrize("index", ["true", "1.9", "1e999"])
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_run_ignores_invalid_numeric_indices(index: str, use_async: bool) -> None:
+    documents = [Document(id="1", content="first"), Document(id="2", content="second")]
+    chat_generator = MockChatGenerator('{"documents": [{"index": ' + index + '}, {"index": 2}]}')
+    ranker = LLMRanker(chat_generator=chat_generator, raise_on_failure=True)
+
+    if use_async:
+        result = await ranker.run_async(query="test query", documents=documents)
+    else:
+        result = ranker.run(query="test query", documents=documents)
+
+    assert result == {"documents": [documents[1]]}
+
+
+@pytest.mark.parametrize("raise_on_failure", [False, True])
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_run_all_invalid_numeric_indices_obeys_failure_setting(raise_on_failure: bool, use_async: bool) -> None:
+    documents = [Document(id="1", content="first"), Document(id="2", content="second")]
+    chat_generator = MockChatGenerator('{"documents": [{"index": true}, {"index": 1.9}, {"index": 1e999}]}')
+    ranker = LLMRanker(chat_generator=chat_generator, top_k=1, raise_on_failure=raise_on_failure)
+
+    if raise_on_failure:
+        with pytest.raises(ValueError, match=r"^Ranking response did not contain any valid document indices\.$"):
+            if use_async:
+                await ranker.run_async(query="test query", documents=documents)
+            else:
+                ranker.run(query="test query", documents=documents)
+    else:
+        if use_async:
+            result = await ranker.run_async(query="test query", documents=documents)
+        else:
+            result = ranker.run(query="test query", documents=documents)
+        assert result == {"documents": documents}
 
 
 def test_run_invalid_index_type_falls_back():

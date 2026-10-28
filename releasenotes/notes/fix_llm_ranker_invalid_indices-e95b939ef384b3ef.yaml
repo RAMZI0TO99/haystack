@@ -1,0 +1,6 @@
+---
+fixes:
+  - |
+    Ignore boolean, fractional, and non-finite document indices in ``LLMRanker``
+    responses. Invalid-only responses now respect ``raise_on_failure`` instead of
+    silently selecting a document or leaking an overflow error.
