@@ -1,0 +1,5 @@
+---
+fixes:
+  - |
+    Fix ``TopPSampler`` raising a tensor type error when ``top_p`` is the integer
+    ``0`` or ``1``, either in the constructor or as a runtime override.

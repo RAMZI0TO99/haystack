@@ -118,6 +118,15 @@ class TestTopPSampler:
         assert docs[0].content == "Sarajevo"
         assert "Top-p sampling with p=" in caplog.text
 
+    @pytest.mark.parametrize("top_p, expected_count", [(0, 1), (1, 3)])
+    @pytest.mark.parametrize("runtime_override", [False, True])
+    def test_run_integer_threshold(
+        self, documents_with_score: list[Document], top_p: int, expected_count: int, runtime_override: bool
+    ) -> None:
+        sampler = TopPSampler(top_p=0.5 if runtime_override else top_p)
+        output = sampler.run(documents=documents_with_score, top_p=top_p if runtime_override else None)
+        assert output["documents"] == documents_with_score[:expected_count]
+
     def test_run_with_integer_scores(self) -> None:
         # integer scores must be treated like float scores, not as missing
         sampler = TopPSampler(top_p=0.99)

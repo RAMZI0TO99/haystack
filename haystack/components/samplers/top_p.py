@@ -103,7 +103,11 @@ class TopPSampler:
         cumulative_probs = torch.cumsum(probs, dim=-1)
 
         # Check if the cumulative probabilities are close to top_p with a 1e-6 tolerance
-        close_to_top_p = torch.isclose(cumulative_probs, torch.tensor(top_p, device=cumulative_probs.device), atol=1e-6)
+        close_to_top_p = torch.isclose(
+            cumulative_probs,
+            torch.tensor(top_p, dtype=cumulative_probs.dtype, device=cumulative_probs.device),
+            atol=1e-6,
+        )
 
         # Combine the close_to_top_p with original condition using logical OR
         condition = (cumulative_probs <= top_p) | close_to_top_p
