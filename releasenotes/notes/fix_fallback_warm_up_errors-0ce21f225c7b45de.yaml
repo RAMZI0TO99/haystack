@@ -1,0 +1,8 @@
+---
+fixes:
+  - |
+    Let ``FallbackChatGenerator`` try healthy generators when another generator
+    fails during warm-up, in synchronous and asynchronous runs and pipelines.
+    Explicit warm-up now tolerates individual failures and raises ``RuntimeError``
+    only when all generators fail to initialize. Failed generators are retried on
+    later runs.

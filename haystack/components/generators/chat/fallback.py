@@ -12,7 +12,7 @@ from haystack.components.generators.utils import _normalize_messages, _trace_cha
 from haystack.core.serialization import component_to_dict
 from haystack.dataclasses import ChatMessage, StreamingCallbackT
 from haystack.tools import ToolsType
-from haystack.utils.async_utils import _execute_component_async
+from haystack.utils.async_utils import _call_with_async_fallback, _execute_component_async
 from haystack.utils.deserialization import deserialize_component_inplace
 
 logger = logging.getLogger(__name__)
@@ -87,18 +87,52 @@ class FallbackChatGenerator:
         return default_from_dict(cls, data)
 
     def warm_up(self) -> None:
-        """Warm up all underlying chat generators."""
+        """
+        Warm up all underlying chat generators, tolerating individual failures.
+
+        :raises RuntimeError: If every chat generator fails to warm up.
+        """
+        failed = 0
+        last_error: Exception | None = None
         for gen in self.chat_generators:
-            if hasattr(gen, "warm_up"):
-                gen.warm_up()
+            try:
+                if hasattr(gen, "warm_up"):
+                    gen.warm_up()
+            except Exception as error:  # noqa: BLE001 - another generator may still be available
+                logger.warning(
+                    "ChatGenerator {chat_generator} failed to warm up: {error}",
+                    chat_generator=gen.__class__.__name__,
+                    error=error,
+                )
+                failed += 1
+                last_error = error
+        if failed == len(self.chat_generators):
+            msg = f"All {failed} chat generators failed to warm up. Last error: {last_error}"
+            raise RuntimeError(msg) from last_error
 
     async def warm_up_async(self) -> None:
-        """Warm up all underlying chat generators on the serving event loop."""
+        """
+        Warm up all underlying chat generators asynchronously, tolerating individual failures.
+
+        :raises RuntimeError: If every chat generator fails to warm up.
+        """
+        failed = 0
+        last_error: Exception | None = None
         for gen in self.chat_generators:
-            if hasattr(gen, "warm_up_async"):
-                await gen.warm_up_async()
-            elif hasattr(gen, "warm_up"):
-                gen.warm_up()
+            try:
+                if hasattr(gen, "warm_up_async") or hasattr(gen, "warm_up"):
+                    await _call_with_async_fallback(gen, "warm_up")
+            except Exception as error:  # noqa: BLE001 - another generator may still be available
+                logger.warning(
+                    "ChatGenerator {chat_generator} failed to warm up: {error}",
+                    chat_generator=gen.__class__.__name__,
+                    error=error,
+                )
+                failed += 1
+                last_error = error
+        if failed == len(self.chat_generators):
+            msg = f"All {failed} chat generators failed to warm up. Last error: {last_error}"
+            raise RuntimeError(msg) from last_error
 
     def close(self) -> None:
         """Release the underlying chat generators' resources."""
@@ -129,6 +163,8 @@ class FallbackChatGenerator:
             "streaming_callback": streaming_callback,
         }
         with _trace_chat_generator_run(chat_generator=gen, generator_inputs=generator_inputs):
+            if hasattr(gen, "warm_up"):
+                gen.warm_up()
             return gen.run(**generator_inputs)
 
     async def _run_single_async(
@@ -146,6 +182,8 @@ class FallbackChatGenerator:
             "streaming_callback": streaming_callback,
         }
         with _trace_chat_generator_run(chat_generator=gen, generator_inputs=generator_inputs):
+            if hasattr(gen, "warm_up_async") or hasattr(gen, "warm_up"):
+                await _call_with_async_fallback(gen, "warm_up")
             return await _execute_component_async(component_instance=gen, **generator_inputs)
 
     @component.output_types(replies=list[ChatMessage], meta=dict[str, Any])
@@ -169,8 +207,6 @@ class FallbackChatGenerator:
               total_attempts, failed_chat_generators, plus any metadata from the successful generator.
         :raises RuntimeError: If all chat generators fail.
         """
-        self.warm_up()
-
         messages = _normalize_messages(messages=messages)
 
         failed: list[str] = []
@@ -226,8 +262,6 @@ class FallbackChatGenerator:
               total_attempts, failed_chat_generators, plus any metadata from the successful generator.
         :raises RuntimeError: If all chat generators fail.
         """
-        await self.warm_up_async()
-
         messages = _normalize_messages(messages=messages)
 
         failed: list[str] = []

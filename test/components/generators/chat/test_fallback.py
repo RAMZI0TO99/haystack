@@ -502,6 +502,115 @@ class TestTracing:
 
 
 class TestComponentLifecycle:
+    @pytest.fixture
+    def unavailable_generator(self, monkeypatch):
+        generator = _DummySuccessGen(text="recovered")
+        warm_up = Mock(side_effect=RuntimeError("warm-up unavailable"))
+        warm_up_async = AsyncMock(side_effect=RuntimeError("warm-up unavailable"))
+        monkeypatch.setattr(generator, "warm_up", warm_up, raising=False)
+        monkeypatch.setattr(generator, "warm_up_async", warm_up_async, raising=False)
+        return generator, warm_up, warm_up_async
+
+    @pytest.mark.parametrize("use_pipeline, healthy_first", [(False, False), (False, True), (True, False)])
+    def test_warm_up_failure_preserves_healthy_fallback(self, unavailable_generator, use_pipeline, healthy_first):
+        unavailable, _, _ = unavailable_generator
+        healthy = _DummySuccessGen(text="healthy")
+        generators = [healthy, unavailable] if healthy_first else [unavailable, healthy]
+        fallback = FallbackChatGenerator(chat_generators=generators)
+
+        if use_pipeline:
+            pipeline = Pipeline()
+            pipeline.add_component(name="fallback", instance=fallback)
+            result = pipeline.run(data={"fallback": {"messages": "hi"}})["fallback"]
+        else:
+            result = fallback.run(messages="hi")
+
+        assert result == {
+            "replies": [ChatMessage.from_assistant("healthy")],
+            "meta": {
+                "dummy_meta": True,
+                "successful_chat_generator_index": 0 if healthy_first else 1,
+                "successful_chat_generator_class": "_DummySuccessGen",
+                "total_attempts": 1 if healthy_first else 2,
+                "failed_chat_generators": [] if healthy_first else ["_DummySuccessGen"],
+            },
+        }
+        assert unavailable.received_messages == []
+
+    @pytest.mark.parametrize("use_pipeline, healthy_first", [(False, False), (False, True), (True, False)])
+    async def test_async_warm_up_failure_preserves_healthy_fallback(
+        self, unavailable_generator, use_pipeline, healthy_first
+    ):
+        unavailable, _, _ = unavailable_generator
+        healthy = _DummySuccessGen(text="healthy")
+        generators = [healthy, unavailable] if healthy_first else [unavailable, healthy]
+        fallback = FallbackChatGenerator(chat_generators=generators)
+
+        if use_pipeline:
+            pipeline = Pipeline()
+            pipeline.add_component(name="fallback", instance=fallback)
+            result = (await pipeline.run_async(data={"fallback": {"messages": "hi"}}))["fallback"]
+        else:
+            result = await fallback.run_async(messages="hi")
+
+        assert result == {
+            "replies": [ChatMessage.from_assistant("healthy")],
+            "meta": {
+                "dummy_meta": True,
+                "successful_chat_generator_index": 0 if healthy_first else 1,
+                "successful_chat_generator_class": "_DummySuccessGen",
+                "total_attempts": 1 if healthy_first else 2,
+                "failed_chat_generators": [] if healthy_first else ["_DummySuccessGen"],
+            },
+        }
+        assert unavailable.received_messages == []
+
+    def test_all_warm_up_failures_raise(self, unavailable_generator):
+        unavailable, _, _ = unavailable_generator
+        fallback = FallbackChatGenerator(chat_generators=[unavailable])
+
+        with pytest.raises(RuntimeError, match="All 1 chat generators failed to warm up.*warm-up unavailable"):
+            fallback.warm_up()
+        with pytest.raises(RuntimeError, match="All 1 chat generators failed.*warm-up unavailable"):
+            fallback.run(messages="hi")
+        assert unavailable.received_messages == []
+
+    async def test_all_async_warm_up_failures_raise(self, unavailable_generator):
+        unavailable, _, _ = unavailable_generator
+        fallback = FallbackChatGenerator(chat_generators=[unavailable])
+
+        with pytest.raises(RuntimeError, match="All 1 chat generators failed to warm up.*warm-up unavailable"):
+            await fallback.warm_up_async()
+        with pytest.raises(RuntimeError, match="All 1 chat generators failed.*warm-up unavailable"):
+            await fallback.run_async(messages="hi")
+        assert unavailable.received_messages == []
+
+    def test_warm_up_failure_is_retried_on_next_run(self, unavailable_generator):
+        unavailable, warm_up, _ = unavailable_generator
+        fallback = FallbackChatGenerator(chat_generators=[unavailable, _DummySuccessGen(text="healthy")])
+        first_result = fallback.run(messages="hi")
+        assert isinstance(first_result["meta"], dict)
+        assert first_result["meta"]["successful_chat_generator_index"] == 1
+
+        warm_up.side_effect = None
+        result = fallback.run(messages="hi")
+        assert isinstance(result["meta"], dict)
+        assert result["meta"]["successful_chat_generator_index"] == 0
+        assert result["meta"]["failed_chat_generators"] == []
+
+    async def test_async_warm_up_failure_is_retried_on_next_run(self, unavailable_generator):
+        unavailable, _, warm_up_async = unavailable_generator
+        fallback = FallbackChatGenerator(chat_generators=[unavailable, _DummySuccessGen(text="healthy")])
+        first_result = await fallback.run_async(messages="hi")
+        assert isinstance(first_result["meta"], dict)
+        assert first_result["meta"]["successful_chat_generator_index"] == 1
+
+        warm_up_async.side_effect = None
+        result = await fallback.run_async(messages="hi")
+        assert isinstance(result["meta"], dict)
+        assert result["meta"]["successful_chat_generator_index"] == 0
+        assert result["meta"]["failed_chat_generators"] == []
+
     def test_warm_up_delegates_to_every_generator(self) -> None:
 
         gens = [Mock(spec=["run", "warm_up"]) for _ in range(3)]
