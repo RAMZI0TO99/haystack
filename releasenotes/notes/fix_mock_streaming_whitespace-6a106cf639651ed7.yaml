@@ -1,0 +1,6 @@
+---
+fixes:
+  - |
+    Preserve leading whitespace and whitespace-only replies in ``MockChatGenerator``
+    streaming callbacks, so streamed text matches the returned reply in both
+    synchronous and asynchronous execution.

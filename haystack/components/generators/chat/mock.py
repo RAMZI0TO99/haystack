@@ -284,7 +284,7 @@ class MockChatGenerator:
         chunks: list[StreamingChunk] = []
 
         # Stream the text content word by word in content block 0.
-        parts = re.findall(r"\S+\s*", reply.text) if reply.text else []
+        parts = re.findall(r"\S+\s*|\s+", reply.text) if reply.text else []
         for idx, part in enumerate(parts):
             chunks.append(
                 StreamingChunk(

@@ -200,6 +200,7 @@ class TestMockChatGenerator:
             [ChatMessage.from_user("hi")], streaming_callback=chunks.append
         )
         assert "".join(chunk.content for chunk in chunks) == "hello there friend"
+        assert [chunk.content for chunk in chunks] == ["hello ", "there ", "friend"]
         assert chunks[0].start is True
         assert chunks[-1].finish_reason == "stop"
         # the returned reply matches the predefined response
@@ -234,6 +235,26 @@ class TestMockChatGenerator:
 
         await MockChatGenerator("hello world").run_async([ChatMessage.from_user("hi")], streaming_callback=callback)
         assert "".join(chunk.content for chunk in chunks) == "hello world"
+        assert chunks[-1].finish_reason == "stop"
+
+    @pytest.mark.parametrize("response", [" \t\n", "  if ready:\n    run()\n", "", "hello there friend"])
+    @pytest.mark.parametrize("use_async", [False, True])
+    async def test_streaming_preserves_response_text(self, response: str, use_async: bool) -> None:
+        chunks: list[StreamingChunk] = []
+        generator = MockChatGenerator(response)
+        messages = [ChatMessage.from_user("hi")]
+        expected = generator.run(messages)
+
+        async def callback(chunk: StreamingChunk) -> None:
+            chunks.append(chunk)
+
+        if use_async:
+            result = await generator.run_async(messages, streaming_callback=callback)
+        else:
+            result = generator.run(messages, streaming_callback=chunks.append)
+
+        assert result == expected
+        assert "".join(chunk.content for chunk in chunks) == response
         assert chunks[-1].finish_reason == "stop"
 
     def test_streaming_empty_reply(self) -> None:
